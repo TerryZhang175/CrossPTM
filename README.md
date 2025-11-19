@@ -4,7 +4,9 @@
 
 By leveraging **AlphaFold** predicted structures, CrossPTM calculates 3D Euclidean distances between modified residues to identify potential functional interplay and statistical enrichment.
 
-![UI Screenshot](https://via.placeholder.com/800x400?text=CrossPTM+Analysis+UI)
+## Attention
+The Database/ folder contains only example files illustrating the required data format.
+Please download the appropriate PTM database from dbPTM before running the program.
 
 ## 🚀 Features
 
