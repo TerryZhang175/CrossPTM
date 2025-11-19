@@ -1,39 +1,108 @@
-# Crosstalk Analysis Web UI
+# CrossPTM: Structural PTM Crosstalk Analysis
 
-This repository already contained the glutathionylation crosstalk pipeline (`scripts/ptm_loader.py`, `scripts/compute_distances.py`, `scripts/enrichment.py`, etc.). The new web application lets you drive that pipeline locally with a graphical workflow so that you can load any primary PTM dataset, inspect available secondary PTMs, and run the existing analysis without rewriting code.
+**CrossPTM** is a bioinformatics pipeline and web interface designed to analyze the spatial crosstalk between a primary Post-Translational Modification (PTM) (e.g., Glutathionylation) and various other PTM types (e.g., Phosphorylation, Acetylation).
 
-## Requirements
+By leveraging **AlphaFold** predicted structures, CrossPTM calculates 3D Euclidean distances between modified residues to identify potential functional interplay and statistical enrichment.
 
-Install the Python dependencies once:
+![UI Screenshot](https://via.placeholder.com/800x400?text=CrossPTM+Analysis+UI)
 
-```bash
-python3 -m pip install -r requirements.txt
+## 🚀 Features
+
+*   **Interactive Web UI**: A modern, user-friendly interface to manage the entire analysis workflow.
+*   **3D Structural Analysis**: Automatically fetches AlphaFold PDB structures and computes spatial distances between PTM sites.
+*   **Parallelized Data Fetching**: Multi-threaded downloader for AlphaFold structures (8x concurrency) to speed up setup.
+*   **Enrichment Analysis**: Statistical evaluation of PTM colocalization (Hypergeometric tests, Odds Ratios).
+*   **Customizable**: 
+    *   Upload any primary PTM dataset.
+    *   Support for custom secondary PTM datasets.
+    *   Configurable residue filtering (e.g., target only Cysteines or S/T/Y).
+*   **Visual Reports**: Generates distance distribution summaries and enrichment reports.
+
+## 🛠️ Installation
+
+### Prerequisites
+*   Python 3.9+
+*   Internet connection (for fetching AlphaFold structures)
+
+### Setup
+1.  Clone the repository:
+    ```bash
+    git clone https://github.com/yourusername/CrossPTM.git
+    cd CrossPTM
+    ```
+
+2.  Create a virtual environment (recommended):
+    ```bash
+    python3 -m venv .venv
+    source .venv/bin/activate
+    ```
+
+3.  Install dependencies:
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+## 🖥️ Usage
+
+### Method 1: Web Interface (Recommended)
+The web UI is the easiest way to run the pipeline.
+
+1.  **Start the server**:
+    ```bash
+    uvicorn app.main:app --reload
+    ```
+2.  **Open your browser**: Navigate to [http://127.0.0.1:8000](http://127.0.0.1:8000).
+
+3.  **Follow the steps**:
+    *   **Step 1**: Upload your Primary PTM file (CSV). Specify columns for UniProt ID and Site position.
+    *   **Step 2**: The system will automatically download missing AlphaFold structures in the background.
+    *   **Step 3**: Select existing PTM datasets (Phosphorylation, Ubiquitination, etc.) or upload your own Custom PTMs.
+    *   **Step 4**: Click **Run Pipeline**.
+    *   **Step 5**: View results, including pair counts, distance stats, and enrichment summaries.
+
+### Method 2: Command Line Interface (Advanced)
+You can also run individual scripts manually if you prefer the CLI.
+
+1.  **Load Data**:
+    ```bash
+    python scripts/ptm_loader.py --glut-file path/to/primary.csv --all-ptms
+    ```
+2.  **Compute Distances**:
+    ```bash
+    python scripts/compute_distances.py --glut path/to/primary.csv
+    ```
+3.  **Run Enrichment**:
+    ```bash
+    python scripts/enrichment.py --glut path/to/primary.csv
+    ```
+
+## 📂 Project Structure
+
+```text
+CrossPTM/
+├── app/                        # Web Application (FastAPI)
+│   ├── main.py                 # API Entry point
+│   ├── pipeline_runner.py      # Logic linking UI to scripts
+│   └── static/                 # Frontend assets (HTML/CSS)
+├── scripts/                    # Core Analysis Logic
+│   ├── fetch_alphafold_structures.py  # Multi-threaded PDB downloader
+│   ├── ptm_loader.py           # Data parsing and normalization
+│   ├── compute_distances.py    # 3D distance calculations
+│   └── enrichment.py           # Statistical analysis
+├── Dataset/                    # Built-in PTM reference datasets
+├── alphafold_structures/       # Downloaded PDB files (Cached)
+└── reports/                    # Output files (Results)
+    ├── webui/                  # UI specific uploads/states
+    ├── distances.csv           # Calculated distances between pairs
+    └── enrichment_summary.md   # Final statistical report
 ```
 
-The requirements file lists the new FastAPI/uvicorn runtime as well as pandas/numpy, which are already used throughout the scripts.
+## ⚙️ Configuration & Notes
 
-## Start the UI
+*   **AlphaFold Structures**: Stored in `alphafold_structures/`. The downloader attempts multiple version suffixes (`v4`, `v3`, etc.) to ensure the best model is found.
+*   **Performance**: Distance computation is optimized but can be heavy for datasets with thousands of proteins. 
+*   **Custom PTMs**: When uploading custom PTMs, providing "Allowed Residues" (e.g., `K` for Ubiquitination) helps filter out invalid sites automatically.
 
-```bash
-uvicorn app.main:app --reload
-```
+## 📄 License
 
-Then open [http://127.0.0.1:8000](http://127.0.0.1:8000) in your browser.
-
-## Workflow
-
-1. **Upload primary PTM sites** – drop a CSV that has UniProt IDs and residue positions. Specify which columns contain those fields (defaults match `Dataset/cleaned_glutathionylation_sites.csv`) and, if needed, provide the “目标氨基酸” filter (e.g., `C` or `S,T,Y`) so any mismatching rows are dropped just like the legacy `ptm_loader` residue checks. After saving to `reports/webui/primary_input.csv`, the app will inspect `alphafold_structures/` and automatically fetch any missing AlphaFold PDBs via `scripts/fetch_alphafold_structures.py` (requires network access).
-2. **Select crosstalk PTMs** – choose from the historical PTM files inside `Dataset/` or upload your own PTM CSV/TSV in the “添加新的 Crosstalk PTM” form. Custom datasets are stored under `reports/webui/custom_ptms/` and appended to the loader manifest (with your specified allowed residues for filtering).
-3. **Run analysis** – click “运行分析”. The backend sequentially executes the existing scripts (no logic changes) and still writes to the canonical outputs:
-   - `reports/artifacts/ptm_sites.filtered.csv`
-   - `reports/distances.csv`
-   - `reports/enrichment_summary.md` and `reports/cysteine_summary.csv`
-4. **Inspect results** – the UI summarizes pair counts, distances, and filtered enrichment text. Download links point to the files above (served read-only via `/reports/...`).
-5. **Refresh without rerun** – use “仅刷新结果” to re-apply PTM filters client-side without rerunning the heavy computations.
-
-## Notes
-
-- The backend reuses the CLI scripts through subprocess calls so the scientific logic remains untouched.
-- When new UniProt IDs appear in the primary dataset, the service auto-checks `alphafold_structures/` and runs `scripts/fetch_alphafold_structures.py` with `--ids ...` to download any missing models (chunked). The fetcher automatically loops through suffixes `model_v12`, `v12`, …, `model_v1`, `v1`, `model`, `v` so new AlphaFold releases are picked up without code changes; override the order via `--suffixes` or the `ALPHAFOLD_SUFFIXES` environment variable. Missing IDs are automatically re-queued (up to 5 attempts) so once connectivity is restored the downloads resume without re-uploading. If the environment cannot reach AlphaFold, the UI will report which specific IDs failed and why so you can fetch them manually later.
-- `scripts/ptm_loader.py` now skips residue inference when a PTM file has no overlapping UniProt IDs, preventing a pandas assignment error that surfaced with the filtered Phosphorylation dataset.
-- Uploaded primary PTM data stays under `reports/webui/`; delete that folder to reset the UI state.
+[MIT License](LICENSE)
