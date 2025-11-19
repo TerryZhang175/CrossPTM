@@ -13,6 +13,7 @@ from app.pipeline_runner import PipelineRunner, PrimaryPTMMeta, CustomPTMMeta
 
 class RunRequest(BaseModel):
     ptm_types: list[str] | None = None
+    compute_sasa: bool = False
 
 
 app = FastAPI(title="Crosstalk Analysis UI", version="0.1.0")
@@ -69,7 +70,7 @@ async def upload_primary(
 @app.post("/api/run")
 def run_pipeline(payload: RunRequest):
     try:
-        logs = runner.run_pipeline(payload.ptm_types)
+        logs = runner.run_pipeline(payload.ptm_types, compute_sasa=payload.compute_sasa)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:

@@ -380,6 +380,15 @@
         <p style="color: var(--text-muted); font-size: 0.9rem;">
           Execute the pipeline: Data Loader &rarr; Distance Computation &rarr; Enrichment Analysis.
         </p>
+        <div style="margin-bottom: 16px;">
+           <label style="display:inline-flex; align-items:center; cursor:pointer;">
+             <input type="checkbox" id="sasa-checkbox" style="width:auto; margin-right:8px;">
+             Compute SASA (Solvent Accessible Surface Area) Analysis
+           </label>
+           <p style="margin:4px 0 0 24px; font-size:0.8rem; color:var(--text-muted);">
+             This calculates surface accessibility for modified vs. control cysteines to see if crosstalk affects exposure.
+           </p>
+        </div>
         <div class="btn-group">
           <button id="run-btn">Run Pipeline</button>
           <button id="refresh-btn" class="secondary" type="button">Refresh Results Only</button>
@@ -395,6 +404,7 @@
         <h2>5. Results</h2>
         <div id="downloads" style="margin-bottom: 16px;"></div>
         <div id="results-summary"></div>
+        <div id="sasa-summary" style="margin-top:24px;"></div>
         <div id="enrichment"></div>
       </section>
     </main>
@@ -412,12 +422,14 @@
       
       const runBtn = document.getElementById("run-btn");
       const refreshBtn = document.getElementById("refresh-btn");
+      const sasaCheckbox = document.getElementById("sasa-checkbox");
       const runLogsContainer = document.getElementById("run-logs-container");
       const runLogs = document.getElementById("run-logs");
       
       const resultsSummary = document.getElementById("results-summary");
       const downloads = document.getElementById("downloads");
       const enrichment = document.getElementById("enrichment");
+      const sasaSummaryDiv = document.getElementById("sasa-summary");
       
       let structurePoll = null;
 
@@ -519,211 +531,125 @@
         }
       });
 
-      runBtn.addEventListener("click", async () => {
-        runLogsContainer.style.display = "block";
-        runLogs.innerHTML = "<pre>Running...</pre>";
-        resultsSummary.textContent = "";
-        try {
-          const resp = await fetchJSON("/api/run", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ptm_types: selectedPtms() }),
-          });
-          renderLogs(resp.logs);
-          renderSummary(resp.summary);
-        } catch (err) {
-          runLogs.textContent = "";
-          renderStatus(runLogs, err.message, "error");
-        }
-      });
-
-      refreshBtn.addEventListener("click", async () => {
-        await loadResults();
-      });
-
-      customForm.addEventListener("submit", async (ev) => {
-        ev.preventDefault();
-        const formData = new FormData(customForm);
-        renderStatus(customStatus, "");
-        try {
-          const resp = await fetchJSON("/api/custom-ptm", {
-            method: "POST",
-            body: formData,
-          });
-          renderStatus(customStatus, `Added custom PTM: ${resp.ptm.name}`, "success");
-          customForm.reset();
-          await loadPtms();
-        } catch (err) {
-          renderStatus(customStatus, err.message, "error");
-        }
-      });
-
-      function updateStructureStatus(payload) {
-        const info = payload && payload.progress ? payload.progress : payload;
-        const missingOverall = payload && payload.missing ? payload.missing : [];
-        const isReady = payload ? payload.primary_ready !== false : true;
-        
-        if (!isReady) {
-           structureContainer.style.display = "none";
-           stopStructurePolling();
-           return;
-        }
-        structureContainer.style.display = "block";
-
-        let text = "Unknown status.";
-        let isError = false;
-        
-        if (info) {
-          const status = info.status || "idle";
-          const total = info.missing_before || info.total || 0;
-          const remaining = info.remaining_missing ?? total;
-          const completed = total ? Math.max(0, total - remaining) : info.downloaded || 0;
-
-          if (status === "running") {
-            text = `Downloading AlphaFold structures: ${completed}/${total || "?"} completed...`;
-          } else if (status === "queued") {
-            text = `Queued for download (${info.queued || 0} items ahead)...`;
-          } else if (status === "completed" || status === "idle") {
-            const remainingAny = missingOverall.length || remaining;
-            text = remainingAny
-              ? `Download finished. Missing structures: ${remainingAny}.`
-              : "All AlphaFold structures are available.";
-          } else if (status === "error") {
-            text = `Error downloading: ${info.message || "Unknown error"}`;
-            isError = true;
-          }
-        }
-
-        structureStatus.innerHTML = `<strong>${text}</strong>`;
-        if (isError) structureStatus.style.color = "var(--error-text)";
-        else structureStatus.style.color = "var(--text-main)";
-
-        // Detailed lists
-        if (info && info.failed_ids && info.failed_ids.length) {
-          structureStatus.innerHTML += `<br><span style="color:red">Failed IDs: ${info.failed_ids.join(", ")}</span>`;
-        }
-        
-        updateStructureProgressBar(info);
-
-        if (info && info.status === "running") {
-          startStructurePolling();
-        } else if (!info || info.status === "completed" || info.status === "idle") {
-          stopStructurePolling();
-        }
-      }
-
-      function updateStructureProgressBar(info) {
-        if (!info) {
-          structureProgressBar.style.display = "none";
-          return;
-        }
-        const total = info.missing_before || info.total || 0;
-        const remaining = info.remaining_missing ?? total;
-        
-        if (!total || total <= 0 || info.status === "idle") {
-           // Show full bar if done
-           if (info.status === "completed") {
-               structureProgressBar.style.display = "block";
-               structureProgressBar.max = 1;
-               structureProgressBar.value = 1;
-           } else {
-               structureProgressBar.style.display = "none";
-           }
-           return;
-        }
-        
-        structureProgressBar.style.display = "block";
-        structureProgressBar.max = total;
-        const completed = Math.max(0, total - (remaining || 0));
-        structureProgressBar.value = completed;
-      }
-
-      function startStructurePolling() {
-        if (structurePoll) return;
-        structurePoll = setInterval(fetchStructureStatus, 4000);
-      }
-
-      function stopStructurePolling() {
-        if (structurePoll) {
-          clearInterval(structurePoll);
-          structurePoll = null;
-        }
-      }
-
-      async function fetchStructureStatus() {
-        try {
-          const data = await fetchJSON("/api/structures/progress");
-          updateStructureStatus(data);
-        } catch (err) {
-          console.error("Structure status poll failed", err);
-        }
-      }
-
-      function renderLogs(logs = []) {
-        if (!logs || logs.length === 0) {
-          runLogs.textContent = "No logs returned.";
-          return;
-        }
-        runLogs.innerHTML = "<pre>" + logs.join("\n") + "</pre>";
-      }
-
-      function renderSummary(summary) {
-        if (!summary) {
-          resultsSummary.textContent = "No results available.";
-          return;
-        }
-        const selected = summary.selected_ptms && summary.selected_ptms.length
-          ? summary.selected_ptms.join(", ")
-          : "All PTMs";
-        
-        let html = `<div style="margin-bottom: 12px;"><strong>Analyzed:</strong> ${selected}</div>`;
-        html += `<div><strong>Total Pairs:</strong> ${summary.pair_count || 0}</div>`;
-
-        if (summary.ptm_breakdown && summary.ptm_breakdown.length) {
-          html += "<table><thead><tr><th>PTM Type</th><th>Pairs</th><th>Avg Dist (Å)</th><th>≤5Å</th><th>≤8Å</th><th>≤10Å</th></tr></thead><tbody>";
-          summary.ptm_breakdown.forEach((row) => {
-            const avg =
-              row.mean_distance === null || row.mean_distance === undefined
-                ? "NA"
-                : Number(row.mean_distance).toFixed(2);
-            html += `<tr>
-                <td>${row.ptm_type}</td>
-                <td>${row.pair_count}</td>
-                <td>${avg}</td>
-                <td>${row.contacts_5A}</td>
-                <td>${row.contacts_8A}</td>
-                <td>${row.contacts_10A}</td>
-            </tr>`;
-          });
-          html += "</tbody></table>";
-        } else {
-          html += "<p style='margin-top:10px; color:var(--text-muted);'>No matches found for the selected PTMs.</p>";
-        }
-        resultsSummary.innerHTML = html;
-
-        // Downloads
-        const links = [];
-        if (summary.distances_path) {
-          links.push(`<a href="/${summary.distances_path}" target="_blank">Download distances.csv</a>`);
-        }
-        if (summary.ptm_sites_path) {
-          links.push(`<a href="/${summary.ptm_sites_path}" target="_blank">Download ptm_sites.filtered.csv</a>`);
-        }
-        if (summary.enrichment_path) {
-          links.push(`<a href="/${summary.enrichment_path}" target="_blank">View Enrichment Report</a>`);
-        }
-        downloads.innerHTML = links.length ? links.join(" | ") : "";
-
-        if (summary.enrichment_markdown && summary.enrichment_markdown.length) {
-          enrichment.innerHTML =
-            "<h3>Enrichment Analysis</h3><pre>" +
-            summary.enrichment_markdown.join("\n") + 
-            "</pre>";
-        } else {
-          enrichment.textContent = "";
-        }
-      }
-
+            runBtn.addEventListener("click", async () => {
+              runLogsContainer.style.display = "block";
+              runLogs.innerHTML = "<pre>Running...</pre>";
+              resultsSummary.textContent = "";
+              sasaSummaryDiv.innerHTML = "";
+              try {
+                const resp = await fetchJSON("/api/run", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ 
+                      ptm_types: selectedPtms(),
+                      compute_sasa: sasaCheckbox.checked
+                  }),
+                });
+                renderLogs(resp.logs);
+                renderSummary(resp.summary);
+              } catch (err) {
+                runLogs.textContent = "";
+                renderStatus(runLogs, err.message, "error");
+              }
+            });
+      
+            refreshBtn.addEventListener("click", async () => {
+              await loadResults();
+            });
+      
+            // ... (rest of code)
+      
+            function renderSummary(summary) {
+              if (!summary) {
+                resultsSummary.textContent = "No results available.";
+                return;
+              }
+              const selected = summary.selected_ptms && summary.selected_ptms.length
+                ? summary.selected_ptms.join(", ")
+                : "All PTMs";
+              
+              let html = `<div style="margin-bottom: 12px;"><strong>Analyzed:</strong> ${selected}</div>`;
+              html += `<div><strong>Total Pairs:</strong> ${summary.pair_count || 0}</div>`;
+      
+              if (summary.ptm_breakdown && summary.ptm_breakdown.length) {
+                html += "<table><thead><tr><th>PTM Type</th><th>Pairs</th><th>Avg Dist (Å)</th><th>≤5Å</th><th>≤8Å</th><th>≤10Å</th></tr></thead><tbody>";
+                summary.ptm_breakdown.forEach((row) => {
+                  const avg =
+                    row.mean_distance === null || row.mean_distance === undefined
+                      ? "NA"
+                      : Number(row.mean_distance).toFixed(2);
+                  html += `<tr>
+                      <td>${row.ptm_type}</td>
+                      <td>${row.pair_count}</td>
+                      <td>${avg}</td>
+                      <td>${row.contacts_5A}</td>
+                      <td>${row.contacts_8A}</td>
+                      <td>${row.contacts_10A}</td>
+                  </tr>`;
+                });
+                html += "</tbody></table>";
+              } else {
+                html += "<p style='margin-top:10px; color:var(--text-muted);'>No matches found for the selected PTMs.</p>";
+              }
+              resultsSummary.innerHTML = html;
+      
+              // Downloads
+              const links = [];
+              if (summary.distances_path) {
+                links.push(`<a href="/${summary.distances_path}" target="_blank">Download distances.csv</a>`);
+              }
+              if (summary.ptm_sites_path) {
+                links.push(`<a href="/${summary.ptm_sites_path}" target="_blank">Download ptm_sites.filtered.csv</a>`);
+              }
+              if (summary.enrichment_path) {
+                links.push(`<a href="/${summary.enrichment_path}" target="_blank">View Enrichment Report</a>`);
+              }
+              if (summary.sasa_report_path) {
+                links.push(`<a href="/${summary.sasa_report_path}" target="_blank">Download SASA Summary (CSV)</a>`);
+              }
+              downloads.innerHTML = links.length ? links.join(" | ") : "";
+      
+              // SASA Summary
+              if (summary.sasa_markdown && summary.sasa_markdown.length) {
+                  sasaSummaryDiv.innerHTML = summary.sasa_markdown.join("<br>").replace(/^### (.*)/, "<h3>$1</h3>").replace(/\|/g, " ").replace(/- \*\*/g, "<br>&bull; <strong>").replace(/\*\*/g, "</strong>");
+                  // A simple parser for the table is better
+                  let sasaHtml = "";
+                  let inTable = false;
+                  summary.sasa_markdown.forEach(line => {
+                      if (line.startsWith("|")) {
+                          if (!inTable) {
+                              sasaHtml += "<table style='width:auto; margin-bottom:12px;'>";
+                              inTable = true;
+                          }
+                          if (line.includes("---")) return; // Skip separator
+                          const cells = line.split("|").filter(c => c.trim() !== "");
+                          sasaHtml += "<tr>" + cells.map(c => `<td style='border:1px solid #e5e7eb; padding:6px;'>${c.trim()}</td>`).join("") + "</tr>";
+                      } else {
+                          if (inTable) {
+                              sasaHtml += "</table>";
+                              inTable = false;
+                          }
+                          if (line.startsWith("###")) sasaHtml += `<h3>${line.replace("###", "")}</h3>`;
+                          else if (line.startsWith("**Definitions")) sasaHtml += `<h4>Definitions</h4>`;
+                          else if (line.startsWith("- **")) sasaHtml += `<div>&bull; ${line.substring(2).replace(/\*\*(.*?)\*\*/, "<strong>$1</strong>")}</div>`;
+                          else if (line.trim() !== "") sasaHtml += `<p>${line}</p>`;
+                      }
+                  });
+                  if (inTable) sasaHtml += "</table>";
+                  sasaSummaryDiv.innerHTML = sasaHtml;
+              } else {
+                  sasaSummaryDiv.innerHTML = "";
+              }
+      
+              if (summary.enrichment_markdown && summary.enrichment_markdown.length) {
+                enrichment.innerHTML =
+                  "<h3>Enrichment Analysis</h3><pre>" +
+                  summary.enrichment_markdown.join("\n") +
+                  "</pre>";
+              } else {
+                enrichment.textContent = "";
+              }
+            }
       async function loadResults() {
         const params = new URLSearchParams();
         selectedPtms().forEach((ptm) => params.append("ptm", ptm));

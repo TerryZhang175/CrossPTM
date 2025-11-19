@@ -62,7 +62,7 @@ class PipelineRunner:
             "total_missing": 0,
         }
         self._fetch_attempt_counts: dict[str, int] = {}
-        self._max_fetch_attempts = 5
+        self._max_fetch_attempts = 2
 
     # ------------------------------------------------------------------
     # State helpers
@@ -202,9 +202,20 @@ class PipelineRunner:
         }
 
     # ------------------------------------------------------------------
-    def run_pipeline(self, selected_ptms: Sequence[str] | None = None) -> list[str]:
+    def run_pipeline(self, selected_ptms: Sequence[str] | None = None, compute_sasa: bool = False) -> list[str]:
         if not self.primary_csv.exists():
             raise FileNotFoundError("Upload a primary PTM dataset before running the pipeline.")
+        
+        # Generate IDs file for SASA or other tools
+        ids_file = self.reports_dir / "artifacts" / "ids.txt"
+        ids_file.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            df = pd.read_csv(self.primary_csv)
+            ids = sorted(df["UniProt_ID"].unique())
+            ids_file.write_text("\n".join(map(str, ids)))
+        except Exception:
+            pass
+
         ptm_loader_cmd = ["python3", "scripts/ptm_loader.py", "--glut-file", str(self.primary_csv)]
         if selected_ptms:
             for ptm in selected_ptms:
@@ -214,11 +225,30 @@ class PipelineRunner:
         custom_manifest = self.custom_manifest if self._has_custom_ptms() else None
         if custom_manifest and custom_manifest.exists():
             ptm_loader_cmd.extend(["--custom-ptms-manifest", str(custom_manifest)])
+        
         commands = [
             ptm_loader_cmd,
-            ["python3", "scripts/compute_distances.py", "--glut", str(self.primary_csv)],
+            ["python3", "scripts/compute_distances.py", "--glut", str(self.primary_csv), "--include-controls"],
             ["python3", "scripts/enrichment.py", "--glut", str(self.primary_csv)],
         ]
+
+        if compute_sasa:
+            sasa_out = self.reports_dir / "sasa_cys.csv"
+            commands.append([
+                "python3", "scripts/compute_sasa.py",
+                "--ids-file", str(ids_file),
+                "--pdb-dir", "alphafold_structures",
+                "--residue-list", "C",
+                "--out", str(sasa_out)
+            ])
+            commands.append([
+                "python3", "scripts/analyze_sasa.py",
+                "--distances", str(self.reports_dir / "distances.csv"),
+                "--sasa", str(sasa_out),
+                "--out-csv", str(self.reports_dir / "ptm_sasa_summary.csv"),
+                "--out-md", str(self.reports_dir / "sasa_summary.md")
+            ])
+
         logs: list[str] = []
         for cmd in commands:
             res = subprocess.run(
@@ -241,6 +271,8 @@ class PipelineRunner:
         ptm_filters = [p for p in ptm_filters or [] if p]
         dist_path = self.reports_dir / "distances.csv"
         enrichment_md = self.reports_dir / "enrichment_summary.md"
+        sasa_md = self.reports_dir / "sasa_summary.md"
+        sasa_csv = self.reports_dir / "ptm_sasa_summary.csv"
         ptm_sites = self.reports_dir / "artifacts" / "ptm_sites.filtered.csv"
 
         summary: dict[str, Any] = {
@@ -248,6 +280,7 @@ class PipelineRunner:
             "distances_path": str(dist_path.relative_to(self.root)) if dist_path.exists() else None,
             "ptm_sites_path": str(ptm_sites.relative_to(self.root)) if ptm_sites.exists() else None,
             "enrichment_path": str(enrichment_md.relative_to(self.root)) if enrichment_md.exists() else None,
+            "sasa_report_path": str(sasa_csv.relative_to(self.root)) if sasa_csv.exists() else None,
         }
 
         if dist_path.exists():
@@ -279,6 +312,11 @@ class PipelineRunner:
             summary["enrichment_markdown"] = self._filter_enrichment_lines(text, ptm_filters)
         else:
             summary["enrichment_markdown"] = []
+
+        if sasa_md.exists():
+            summary["sasa_markdown"] = sasa_md.read_text().splitlines()
+        else:
+            summary["sasa_markdown"] = []
 
         return summary
 
@@ -521,17 +559,57 @@ class PipelineRunner:
                     }
                     self._save_fetch_progress()
                 continue
+            
+            error_report_path = None
             with self._fetch_lock:
                 result["status"] = "completed"
-                self._fetch_progress = result
-                self._save_fetch_progress()
+                
                 retry_candidates = [
                     uid
                     for uid in result.get("remaining_ids", [])
                     if self._fetch_attempt_counts.get(uid, 0) < self._max_fetch_attempts
                 ]
+
+                # If we are done or giving up on some IDs, generate report
+                final_failed = sorted(set(result.get("failed_ids", [])) | set(result.get("remaining_ids", [])))
+                if not retry_candidates and final_failed:
+                     error_report_path = self._generate_error_report(final_failed, result.get("failed_messages", []))
+                
+                if error_report_path:
+                    result["error_report_path"] = error_report_path
+
+                self._fetch_progress = result
+                self._save_fetch_progress()
+                
             if retry_candidates:
                 self.queue_structure_fetch(set(retry_candidates))
+
+    def _generate_error_report(self, failed_ids: list[str], failed_messages: list[str]) -> str | None:
+        if not failed_ids:
+            return None
+        
+        # Map ID to reason
+        reasons = {}
+        for msg in failed_messages:
+            # msg is like "Failed P12345: HTTP Error 404..." or similar
+            if msg.startswith("Failed "):
+                body = msg[len("Failed "):]
+                uid, _, reason = body.partition(":")
+                uid = uid.strip()
+                if uid:
+                    reasons[uid] = reason.strip()
+        
+        path = self.reports_dir / "structure_fetch_errors.csv"
+        import csv
+        try:
+            with open(path, "w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(["UniProt_ID", "Error_Reason"])
+                for uid in failed_ids:
+                    writer.writerow([uid, reasons.get(uid, "Download failed after max retries")])
+            return str(path.relative_to(self.root))
+        except Exception:
+            return None
 
     def _update_fetch_progress(self, update: dict[str, Any]) -> None:
         with self._fetch_lock:
