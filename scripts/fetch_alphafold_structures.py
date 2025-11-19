@@ -89,6 +89,31 @@ def parse_suffixes(arg_value: str | None) -> list[str]:
     return [x for x in items if x]
 
 
+def process_id(
+    uid: str,
+    out_dir: Path,
+    base: str,
+    suffixes: list[str],
+    retries: int = 3,
+    backoff: float = 1.5,
+) -> str:
+    """
+    Returns 'downloaded', 'skipped', or 'error' status.
+    """
+    existing = sorted(out_dir.glob(f"AF-{uid}-F1-*.pdb"))
+    if existing:
+        return "skipped"
+    try:
+        download_with_suffixes(
+            uid, out_dir, base, suffixes, retries=retries, backoff=backoff
+        )
+        return "downloaded"
+    except Exception as e:
+        # We print the error here so it appears in logs immediately
+        sys.stderr.write(f"Failed {uid}: {e}\n")
+        return "error"
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--manifest", required=True, help="Path to download_summary.json")
@@ -102,7 +127,13 @@ def main(argv=None) -> int:
     p.add_argument(
         "--suffixes",
         default=None,
-        help="Comma-separated list of filename suffixes to try (default tries model_v6, v6, model_v5, ..., model)",
+        help="Comma-separated list of filename suffixes to try",
+    )
+    p.add_argument(
+        "--workers",
+        type=int,
+        default=4,
+        help="Number of concurrent download threads (default: 4)",
     )
     args = p.parse_args(argv)
 
@@ -116,7 +147,6 @@ def main(argv=None) -> int:
     else:
         with open(args.manifest, "r") as f:
             m = json.load(f)
-        # Prefer the manifest's successful list when available
         ids = m.get("successful_ids") or m.get("ids") or []
         if not ids:
             print("No IDs found in manifest.", file=sys.stderr)
@@ -126,22 +156,44 @@ def main(argv=None) -> int:
     skipped = 0
     errors = 0
 
-    for uid in ids:
-        existing = sorted(out_dir.glob(f"AF-{uid}-F1-*.pdb"))
-        if existing:
-            skipped += 1
-            continue
-        try:
-            download_with_suffixes(uid, out_dir, args.base, suffixes)
-            downloaded += 1
-        except Exception as e:
-            errors += 1
-            print(f"Failed {uid}: {e}", file=sys.stderr)
-        
-        print(f"PROGRESS: downloaded={downloaded} skipped={skipped} errors={errors}", flush=True)
+    import concurrent.futures
+    import threading
+
+    lock = threading.Lock()
+
+    # Thread-safe progress printer
+    def update_progress(status: str):
+        nonlocal downloaded, skipped, errors
+        with lock:
+            if status == "downloaded":
+                downloaded += 1
+            elif status == "skipped":
+                skipped += 1
+            elif status == "error":
+                errors += 1
+            print(
+                f"PROGRESS: downloaded={downloaded} skipped={skipped} errors={errors}",
+                flush=True,
+            )
+
+    # Use ThreadPoolExecutor for concurrency
+    with concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as executor:
+        # Map each ID to a future
+        futures = {
+            executor.submit(
+                process_id, uid, out_dir, args.base, suffixes
+            ): uid
+            for uid in ids
+        }
+
+        for future in concurrent.futures.as_completed(futures):
+            # Retrieve result
+            status = future.result()
+            update_progress(status)
 
     print(
-        f"Done. downloaded={downloaded} skipped={skipped} errors={errors} -> {out_dir}")
+        f"Done. downloaded={downloaded} skipped={skipped} errors={errors} -> {out_dir}"
+    )
     return 0 if errors == 0 else 2
 
 

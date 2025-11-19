@@ -625,6 +625,8 @@ class PipelineRunner:
                 str(manifest),
                 "--out",
                 "alphafold_structures",
+                "--workers",
+                "8",
                 "--ids",
                 *chunk,
             ]

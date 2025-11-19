@@ -1,14 +1,16 @@
 {
   "structure_fetch_progress": {
-    "status": "idle",
-    "attempted": 0,
-    "downloaded": 0,
+    "status": "running",
+    "attempted": 8,
+    "downloaded": 8,
     "errors": 0,
-    "remaining_missing": 0,
+    "remaining_missing": 686,
     "failed_ids": [],
     "failed_messages": [],
     "logs": [],
-    "queued": 0
+    "queued": 0,
+    "total_missing": 0,
+    "total": 694
   },
   "last_run": "2025-11-19T05:36:20.302043Z",
   "primary_csv": "reports/webui/primary_input.csv",
