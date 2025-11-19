@@ -3,7 +3,6 @@ alphafold_structures/*
 !alphafold_structures/download_summary.json
 !alphafold_structures/.keep
 *.pdb
-Dataset/
 
 # Local outputs and temp
 outputs/
@@ -15,3 +14,4 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .DS_Store
+
