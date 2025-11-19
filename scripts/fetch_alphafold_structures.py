@@ -137,6 +137,8 @@ def main(argv=None) -> int:
         except Exception as e:
             errors += 1
             print(f"Failed {uid}: {e}", file=sys.stderr)
+        
+        print(f"PROGRESS: downloaded={downloaded} skipped={skipped} errors={errors}", flush=True)
 
     print(
         f"Done. downloaded={downloaded} skipped={skipped} errors={errors} -> {out_dir}")

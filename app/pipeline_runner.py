@@ -98,7 +98,12 @@ class PipelineRunner:
                 }
             )
         for entry in self._load_custom_ptms():
-            path = Path(entry["path"])
+            path_str = entry["path"]
+            if Path(path_str).is_absolute():
+                path = Path(path_str)
+            else:
+                path = self.root / path_str
+                
             rel = ""
             try:
                 rel = str(path.relative_to(self.root))
@@ -420,7 +425,7 @@ class PipelineRunner:
         manifest = [entry for entry in manifest if entry.get("name") != ptm_name]
         entry = {
             "name": ptm_name,
-            "path": str(dest),
+            "path": str(dest.relative_to(self.root)),
             "allowed_residues": sorted(allowed) if allowed else None,
             "uploaded": datetime.utcnow().isoformat() + "Z",
         }
@@ -600,7 +605,7 @@ class PipelineRunner:
                 "failed_ids": [],
                 "failed_messages": [],
             }
-        chunk_size = 50
+        chunk_size = 100
         logs: list[str] = []
         downloaded = 0
         errors = 0
@@ -623,41 +628,77 @@ class PipelineRunner:
                 "--ids",
                 *chunk,
             ]
-            res = subprocess.run(
+            
+            chunk_downloaded = 0
+            chunk_errors = 0
+            chunk_skipped = 0
+
+            with subprocess.Popen(
                 cmd,
                 cwd=self.root,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
                 text=True,
-            )
-            stdout = (res.stdout or "").strip()
-            stderr = (res.stderr or "").strip()
-            if stdout:
-                logs.append(stdout)
-            if stderr:
-                logs.append(stderr)
-                for line in stderr.splitlines():
-                    line = line.strip()
-                    if not line.startswith("Failed "):
-                        continue
-                    body = line[len("Failed ") :]
-                    if not body:
-                        continue
-                    uid, _, reason = body.partition(":")
-                    uid = uid.strip()
-                    if uid:
-                        failed_ids.add(uid)
-                    failed_messages.append(line)
-            match = re.search(r"downloaded=(\d+)\s+skipped=(\d+)\s+errors=(\d+)", stdout)
-            if match:
-                downloaded += int(match.group(1))
-                errors += int(match.group(3))
+                bufsize=1,
+            ) as process:
+                if process.stdout:
+                    for line in process.stdout:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        logs.append(line)
+
+                        if line.startswith("Failed "):
+                            body = line[len("Failed ") :]
+                            if body:
+                                uid, _, reason = body.partition(":")
+                                uid = uid.strip()
+                                if uid:
+                                    failed_ids.add(uid)
+                                failed_messages.append(line)
+
+                        if line.startswith("PROGRESS:"):
+                            try:
+                                # Expected: PROGRESS: downloaded=X skipped=Y errors=Z
+                                parts = line.split()
+                                d_val = int(parts[1].split("=")[1])
+                                s_val = int(parts[2].split("=")[1])
+                                e_val = int(parts[3].split("=")[1])
+                                
+                                chunk_downloaded = d_val
+                                chunk_skipped = s_val
+                                chunk_errors = e_val
+                                
+                                current_chunk_processed = chunk_downloaded + chunk_skipped + chunk_errors
+                                if progress_cb:
+                                    progress_cb(
+                                        {
+                                            "attempted": attempted + current_chunk_processed,
+                                            "downloaded": downloaded + chunk_downloaded,
+                                            "errors": errors + chunk_errors,
+                                            "failed_ids": sorted(failed_ids),
+                                            "failed_messages": failed_messages[-10:],
+                                            "remaining_missing": max(total - (attempted + current_chunk_processed), 0),
+                                        }
+                                    )
+                            except (IndexError, ValueError):
+                                pass
+
+            ret = process.wait()
+            if ret not in (0, 2):
+                raise RuntimeError(f"AlphaFold fetch failed with code {ret}")
+
+            downloaded += chunk_downloaded
+            errors += chunk_errors
             attempted += len(chunk)
+            
             for uid in chunk:
                 self._fetch_attempt_counts[uid] = self._fetch_attempt_counts.get(uid, 0) + 1
                 if uid not in failed_ids and uid in self._fetch_attempt_counts:
                     self._fetch_attempt_counts.pop(uid, None)
+
             if progress_cb:
-                progress_cb(
+                 progress_cb(
                     {
                         "attempted": attempted,
                         "downloaded": downloaded,
@@ -667,8 +708,7 @@ class PipelineRunner:
                         "remaining_missing": max(total - attempted, 0),
                     }
                 )
-            if res.returncode not in (0, 2):
-                raise RuntimeError(f"AlphaFold fetch failed: {stdout}\n{stderr}")
+
         return {
             "downloaded": downloaded,
             "errors": errors,
