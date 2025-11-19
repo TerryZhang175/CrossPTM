@@ -1,0 +1,504 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Crosstalk Analysis UI</title>
+    <style>
+      :root {
+        font-family: Arial, sans-serif;
+        color: #1c1c1c;
+        background-color: #f3f4f6;
+      }
+      body {
+        margin: 0;
+        padding: 0;
+      }
+      main {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 24px;
+      }
+      section {
+        background: #fff;
+        border-radius: 8px;
+        padding: 16px 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+      }
+      h1,
+      h2,
+      h3 {
+        margin-top: 0;
+      }
+      label {
+        display: block;
+        font-weight: 600;
+        margin-top: 12px;
+      }
+      input[type="text"],
+      input[type="file"] {
+        width: 100%;
+        padding: 8px;
+        margin-top: 4px;
+        border: 1px solid #cdd0d6;
+        border-radius: 4px;
+      }
+      button {
+        background: #0f62fe;
+        border: none;
+        color: #fff;
+        padding: 10px 18px;
+        border-radius: 4px;
+        font-size: 14px;
+        cursor: pointer;
+        margin-right: 12px;
+      }
+      button.secondary {
+        background: #6b7280;
+      }
+      .ptm-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px 20px;
+        margin-top: 12px;
+      }
+      .ptm-list label {
+        display: flex;
+        align-items: center;
+        font-weight: 400;
+        margin-top: 0;
+      }
+      .badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 12px;
+        margin-left: 8px;
+      }
+      .badge.ok {
+        background: #def7ec;
+        color: #03543f;
+      }
+      .badge.missing {
+        background: #fee2e2;
+        color: #991b1b;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 10px;
+      }
+      th,
+      td {
+        text-align: left;
+        border-bottom: 1px solid #e5e7eb;
+        padding: 8px;
+      }
+      pre {
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .status {
+        margin-top: 10px;
+        color: #0f5132;
+        background: #d1e7dd;
+        padding: 8px 10px;
+        border-radius: 4px;
+      }
+      .status.error {
+        color: #842029;
+        background: #f8d7da;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section>
+        <h1>主 PTM 输入</h1>
+        <p>上传主 PTM 的位点文件，指定 UniProt 与位点字段，然后运行现有的 crosstalk pipeline。</p>
+        <form id="primary-form">
+          <label>PTM 名称
+            <input type="text" name="primary_ptm_name" value="Glutathionylation" required />
+          </label>
+          <label>UniProt 列名
+            <input type="text" name="uniprot_column" value="UniProt_ID" />
+          </label>
+          <label>位点列名
+            <input type="text" name="site_column" value="Glutathione_Site" />
+          </label>
+          <label>目标氨基酸（可选，多个可写为 C 或 S,T,Y 或 STY）
+            <input type="text" name="target_residues" placeholder="示例：C 或 S,T,Y" />
+          </label>
+          <label>上传主 PTM 文件（CSV/TXT/TSV 等）
+            <input type="file" name="file" required />
+          </label>
+          <div style="margin-top: 14px;">
+            <button type="submit">保存主 PTM</button>
+          </div>
+        </form>
+        <div id="primary-status"></div>
+        <div id="structure-status"></div>
+        <div id="structure-progress-container" style="margin-top:8px;">
+          <progress id="structure-progress-bar" value="0" max="1" style="width:100%; display:none;"></progress>
+        </div>
+      </section>
+
+      <section>
+        <h2>选择要加载的 Crosstalk PTM</h2>
+        <div id="ptm-container" class="ptm-list"></div>
+      </section>
+
+      <section>
+        <h2>添加新的 Crosstalk PTM</h2>
+        <p>上传额外的 PTM 数据文件（格式与公开 PTM 数据类似），并设置该 PTM 的合法氨基酸（用于过滤不合理的位点）。</p>
+        <form id="custom-form">
+          <label>新 PTM 名称
+            <input type="text" name="ptm_name" placeholder="如 SUMOylation" required />
+          </label>
+          <label>期望氨基酸（可选，例如 K 或 K,R）
+            <input type="text" name="allowed_residues" placeholder="示例：K 或 K,R" />
+          </label>
+          <label>上传 PTM 文件（CSV/TXT/TSV 等）
+            <input type="file" name="file" required />
+          </label>
+          <div style="margin-top: 14px;">
+            <button type="submit">添加 Crosstalk PTM</button>
+          </div>
+        </form>
+        <div id="custom-status"></div>
+      </section>
+
+      <section>
+        <h2>运行</h2>
+        <p>运行会按顺序调用 <code>scripts/ptm_loader.py</code>、<code>scripts/compute_distances.py</code> 和 <code>scripts/enrichment.py</code>，输出仍写入原 reports 目录。</p>
+        <button id="run-btn">运行分析</button>
+        <button id="refresh-btn" class="secondary" type="button">仅刷新结果</button>
+        <div id="run-logs"></div>
+      </section>
+
+      <section>
+        <h2>结果</h2>
+        <div id="results-summary"></div>
+        <div id="downloads"></div>
+        <div id="enrichment"></div>
+      </section>
+    </main>
+
+    <script>
+      const ptmContainer = document.getElementById("ptm-container");
+      const primaryForm = document.getElementById("primary-form");
+      const primaryStatus = document.getElementById("primary-status");
+      const structureStatus = document.getElementById("structure-status");
+      const customForm = document.getElementById("custom-form");
+      const customStatus = document.getElementById("custom-status");
+      const runBtn = document.getElementById("run-btn");
+      const refreshBtn = document.getElementById("refresh-btn");
+      const runLogs = document.getElementById("run-logs");
+      const resultsSummary = document.getElementById("results-summary");
+      const downloads = document.getElementById("downloads");
+      const enrichment = document.getElementById("enrichment");
+      const structureProgressBar = document.getElementById("structure-progress-bar");
+      let structurePoll = null;
+
+      async function fetchJSON(url, options = {}) {
+        const resp = await fetch(url, options);
+        if (!resp.ok) {
+          const payload = await resp.json().catch(() => ({}));
+          throw new Error(payload.detail || resp.statusText);
+        }
+        return resp.json();
+      }
+
+      function renderStatus(el, text, isError = false) {
+        el.textContent = text;
+        el.className = isError ? "status error" : "status";
+      }
+
+      async function loadPtms() {
+        const data = await fetchJSON("/api/ptms");
+        ptmContainer.innerHTML = "";
+        data.ptms.forEach((item) => {
+          const wrapper = document.createElement("label");
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.value = item.name;
+          checkbox.disabled = !item.available;
+          wrapper.appendChild(checkbox);
+          const span = document.createElement("span");
+          const extra = item.source === "custom" ? "（自定义）" : "";
+          span.textContent = " " + item.name + extra;
+          wrapper.appendChild(span);
+          const badge = document.createElement("span");
+          badge.className = "badge " + (item.available ? "ok" : "missing");
+          badge.textContent = item.available ? "可用" : "缺失";
+          wrapper.appendChild(badge);
+          if (item.allowed_residues && item.allowed_residues.length) {
+            const badge2 = document.createElement("span");
+            badge2.className = "badge ok";
+            badge2.textContent = `Residue: ${item.allowed_residues.join("/")}`;
+            wrapper.appendChild(badge2);
+          }
+          ptmContainer.appendChild(wrapper);
+        });
+      }
+
+      function selectedPtms() {
+        return Array.from(ptmContainer.querySelectorAll("input[type='checkbox']:checked")).map(
+          (el) => el.value
+        );
+      }
+
+      primaryForm.addEventListener("submit", async (ev) => {
+        ev.preventDefault();
+        const formData = new FormData(primaryForm);
+        primaryStatus.textContent = "";
+        try {
+          const resp = await fetchJSON("/api/primary", {
+            method: "POST",
+            body: formData,
+          });
+          const filtered = resp.info.filtered_by_residue || 0;
+          const target = resp.info.target_residues && resp.info.target_residues.length
+            ? `；目标氨基酸：${resp.info.target_residues.join(",")}`
+            : "";
+          const dropped = filtered ? `（因氨基酸筛掉 ${filtered} 行）` : "";
+          renderStatus(primaryStatus, `已保存 ${resp.info.rows} 行主 PTM 数据${dropped}${target}。`);
+          updateStructureStatus(resp.info.structure_fetch);
+          startStructurePolling();
+        } catch (err) {
+          renderStatus(primaryStatus, err.message, true);
+          if (structureStatus) {
+            structureStatus.textContent = "";
+            structureStatus.className = "";
+          }
+        }
+      });
+
+      runBtn.addEventListener("click", async () => {
+        runLogs.textContent = "运行中...";
+        resultsSummary.textContent = "";
+        try {
+          const resp = await fetchJSON("/api/run", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ptm_types: selectedPtms() }),
+          });
+          renderLogs(resp.logs);
+          renderSummary(resp.summary);
+        } catch (err) {
+          runLogs.textContent = "";
+          renderStatus(runLogs, err.message, true);
+        }
+      });
+
+      refreshBtn.addEventListener("click", async () => {
+        await loadResults();
+      });
+
+      customForm.addEventListener("submit", async (ev) => {
+        ev.preventDefault();
+        const formData = new FormData(customForm);
+        customStatus.textContent = "";
+        try {
+          const resp = await fetchJSON("/api/custom-ptm", {
+            method: "POST",
+            body: formData,
+          });
+          renderStatus(customStatus, `已添加自定义 PTM：${resp.ptm.name}`);
+          customForm.reset();
+          await loadPtms();
+        } catch (err) {
+          renderStatus(customStatus, err.message, true);
+        }
+      });
+
+      function updateStructureStatus(payload) {
+        const info = payload && payload.progress ? payload.progress : payload;
+        const missingOverall = payload && payload.missing ? payload.missing : [];
+        const isReady = payload ? payload.primary_ready !== false : true;
+        if (!structureStatus) {
+          return;
+        }
+        if (!isReady) {
+          structureStatus.className = "status";
+          structureStatus.innerHTML = "尚未上传主 PTM，尚未执行 AlphaFold 结构检查。";
+          if (structureProgressBar) {
+            structureProgressBar.style.display = "none";
+          }
+          stopStructurePolling();
+          return;
+        }
+        let text = "AlphaFold 结构状态未知。";
+        let isError = false;
+        if (info) {
+          const status = info.status || "idle";
+          const total = info.missing_before || info.total || 0;
+          const remaining = info.remaining_missing ?? total;
+          const completed = total ? Math.max(0, total - remaining) : info.downloaded || 0;
+          if (status === "running") {
+            text = `正在下载 AlphaFold 结构：${completed}/${total || "?"} 已完成`;
+          } else if (status === "queued") {
+            text = `等待下载任务开始（排队 ${info.queued || 0} 个 ID）`;
+          } else if (status === "completed" || status === "idle") {
+            const remainingAny = missingOverall.length || remaining;
+            text = remainingAny
+              ? `下载完成，但仍缺失 ${remainingAny} 个结构`
+              : "AlphaFold 结构已齐全。";
+          } else if (status === "error") {
+            text = `结构下载出错：${info.message || "未知原因"}`;
+            isError = true;
+          }
+          if ((info.errors || 0) > 0 || (info.remaining_missing || 0) > 0 || missingOverall.length) {
+            isError = true;
+          }
+        }
+        structureStatus.className = isError ? "status error" : "status";
+        structureStatus.innerHTML = "";
+        const base = document.createElement("div");
+        base.textContent = text;
+        structureStatus.appendChild(base);
+        if (info && info.failed_ids && info.failed_ids.length) {
+          const failed = document.createElement("div");
+          failed.textContent = `无法下载：${info.failed_ids.join(", ")}`;
+          structureStatus.appendChild(failed);
+        }
+        if (missingOverall && missingOverall.length) {
+          const remainAll = document.createElement("div");
+          remainAll.textContent = `仍缺失的结构：${missingOverall.join(", ")}`;
+          structureStatus.appendChild(remainAll);
+        }
+        if (info && info.remaining_ids && info.remaining_ids.length) {
+          const remain = document.createElement("div");
+          remain.textContent = `本次尝试后仍缺失：${info.remaining_ids.join(", ")}`;
+          structureStatus.appendChild(remain);
+        }
+        if (info && info.failed_messages && info.failed_messages.length) {
+          const pre = document.createElement("pre");
+          pre.textContent = info.failed_messages.join("\n");
+          structureStatus.appendChild(pre);
+        }
+        updateStructureProgressBar(info);
+        if (info && info.status === "running") {
+          startStructurePolling();
+        } else if (!info || info.status === "completed" || info.status === "idle") {
+          stopStructurePolling();
+        }
+      }
+
+      function updateStructureProgressBar(info) {
+        if (!structureProgressBar) {
+          return;
+        }
+        if (!info) {
+          structureProgressBar.style.display = "none";
+          return;
+        }
+        const total = info.missing_before || info.total || 0;
+        const remaining = info.remaining_missing ?? total;
+        if (!total || total <= 0 || info.status === "idle") {
+          structureProgressBar.style.display = "none";
+          return;
+        }
+        structureProgressBar.max = total;
+        const completed = Math.max(0, total - (remaining || 0));
+        structureProgressBar.value = completed;
+        structureProgressBar.style.display = "block";
+      }
+
+      function startStructurePolling() {
+        if (structurePoll) {
+          return;
+        }
+        structurePoll = setInterval(fetchStructureStatus, 4000);
+      }
+
+      function stopStructurePolling() {
+        if (structurePoll) {
+          clearInterval(structurePoll);
+          structurePoll = null;
+        }
+      }
+
+      async function fetchStructureStatus() {
+        try {
+          const data = await fetchJSON("/api/structures/progress");
+          updateStructureStatus(data);
+        } catch (err) {
+          renderStatus(structureStatus, err.message, true);
+        }
+      }
+
+      function renderLogs(logs = []) {
+        if (!logs || logs.length === 0) {
+          runLogs.textContent = "";
+          return;
+        }
+        runLogs.innerHTML = "<h3>执行日志</h3><pre>" + logs.join("\n") + "</pre>";
+      }
+
+      function renderSummary(summary) {
+        if (!summary) {
+          resultsSummary.textContent = "暂无结果。";
+          return;
+        }
+        const selected = summary.selected_ptms && summary.selected_ptms.length
+          ? summary.selected_ptms.join(", ")
+          : "全部 PTM";
+        let html = `<p>已加载：${selected}；对数 ${summary.pair_count || 0} 条 PTM-半胱氨酸配对。</p>`;
+        if (summary.ptm_breakdown && summary.ptm_breakdown.length) {
+          html += "<table><thead><tr><th>PTM</th><th>配对数</th><th>平均最小距离 (Å)</th><th>≤5Å</th><th>≤8Å</th><th>≤10Å</th></tr></thead><tbody>";
+          summary.ptm_breakdown.forEach((row) => {
+            const avg =
+              row.mean_distance === null || row.mean_distance === undefined
+                ? "NA"
+                : Number(row.mean_distance).toFixed(2);
+            html += `<tr><td>${row.ptm_type}</td><td>${row.pair_count}</td><td>${avg}</td><td>${row.contacts_5A}</td><td>${row.contacts_8A}</td><td>${row.contacts_10A}</td></tr>`;
+          });
+          html += "</tbody></table>";
+        } else {
+          html += "<p>没有匹配到选择的 PTM 结果。</p>";
+        }
+        resultsSummary.innerHTML = html;
+
+        const links = [];
+        if (summary.distances_path) {
+          links.push(`<a href="/${summary.distances_path}" target="_blank">下载 distances.csv</a>`);
+        }
+        if (summary.ptm_sites_path) {
+          links.push(`<a href="/${summary.ptm_sites_path}" target="_blank">下载 ptm_sites.filtered.csv</a>`);
+        }
+        if (summary.enrichment_path) {
+          links.push(`<a href="/${summary.enrichment_path}" target="_blank">查看 enrichment_summary.md</a>`);
+        }
+        downloads.innerHTML = links.length ? `<p>${links.join(" | ")}</p>` : "";
+
+        if (summary.enrichment_markdown && summary.enrichment_markdown.length) {
+          enrichment.innerHTML =
+            "<h3>富集摘要</h3><pre>" +
+            summary.enrichment_markdown.join("\n") +
+            "</pre>";
+        } else {
+          enrichment.textContent = "";
+        }
+      }
+
+      async function loadResults() {
+        const params = new URLSearchParams();
+        selectedPtms().forEach((ptm) => params.append("ptm", ptm));
+        try {
+          const data = await fetchJSON(`/api/results?${params.toString()}`);
+          renderSummary(data);
+        } catch (err) {
+          renderStatus(resultsSummary, err.message, true);
+        }
+      }
+
+      async function bootstrap() {
+        await loadPtms();
+        resultsSummary.textContent = "尚未运行分析。";
+        enrichment.textContent = "尚无富集结果。";
+      }
+      bootstrap();
+    </script>
+  </body>
+</html>

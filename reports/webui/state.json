@@ -1,0 +1,41 @@
+{
+  "structure_fetch_progress": {
+    "status": "running",
+    "message": "AlphaFold fetch failed: \nFailed A0A0U1RQK4: HTTP Error 404: Not Found\nFailed Q4U4S6: HTTP Error 404: Not Found\nFailed E9Q555: HTTP Error 404: Not Found\nFailed A2AN08: HTTP Error 404: Not Found\nFailed Q62059: HTTP Error 404: Not Found\nFailed Q9QXS1: HTTP Error 404: Not Found\nFailed A0A5F9ZH43: HTTP Error 404: Not Found\nFailed Q61554: HTTP Error 404: Not Found\nFailed Q09666: HTTP Error 404: Not Found\nFailed O70325: HTTP Error 404: Not Found\nFailed E9Q557: HTTP Error 404: Not Found\nFailed P11531: HTTP Error 404: Not Found\nFailed Q05793: HTTP Error 404: Not Found\nFailed Q9QXZ0: HTTP Error 404: Not Found\nFailed Q91ZX7: HTTP Error 404: Not Found\nFailed H0YBI4: HTTP Error 404: Not Found\nFailed A0A5F9ZHR7: HTTP Error 404: Not Found\nFailed Q14204: HTTP Error 404: Not Found\nFailed A0A0A0MTS7: HTTP Error 404: Not Found\nFailed G4SLH0: <urlopen error [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1029)>\nFailed A2AAJ9: HTTP Error 404: Not Found\nTraceback (most recent call last):\n  File \"/home/Terry/Project/crosstalk_analysis/scripts/fetch_alphafold_structures.py\", line 147, in <module>\n    raise SystemExit(main())\n                     ~~~~^^\n  File \"/home/Terry/Project/crosstalk_analysis/scripts/fetch_alphafold_structures.py\", line 135, in main\n    download_with_suffixes(uid, out_dir, args.base, suffixes)\n    ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/Terry/Project/crosstalk_analysis/scripts/fetch_alphafold_structures.py\", line 72, in download_with_suffixes\n    download_url(url, dest, retries=retries, backoff=backoff)\n    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/Terry/Project/crosstalk_analysis/scripts/fetch_alphafold_structures.py\", line 50, in download_url\n    with urlopen(req, timeout=60) as r, open(dest, \"wb\") as f:\n         ~~~~~~~^^^^^^^^^^^^^^^^^\n  File \"/usr/lib/python3.13/urllib/request.py\", line 189, in urlopen\n    return opener.open(url, data, timeout)\n           ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/lib/python3.13/urllib/request.py\", line 489, in open\n    response = self._open(req, data)\n  File \"/usr/lib/python3.13/urllib/request.py\", line 506, in _open\n    result = self._call_chain(self.handle_open, protocol, protocol +\n                              '_open', req)\n  File \"/usr/lib/python3.13/urllib/request.py\", line 466, in _call_chain\n    result = func(*args)\n  File \"/usr/lib/python3.13/urllib/request.py\", line 1367, in https_open\n    return self.do_open(http.client.HTTPSConnection, req,\n           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n                        context=self._context)\n                        ^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/lib/python3.13/urllib/request.py\", line 1319, in do_open\n    h.request(req.get_method(), req.selector, req.data, headers,\n    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n              encode_chunked=req.has_header('Transfer-encoding'))\n              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/lib/python3.13/http/client.py\", line 1338, in request\n    self._send_request(method, url, body, headers, encode_chunked)\n    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/lib/python3.13/http/client.py\", line 1384, in _send_request\n    self.endheaders(body, encode_chunked=encode_chunked)\n    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/lib/python3.13/http/client.py\", line 1333, in endheaders\n    self._send_output(message_body, encode_chunked=encode_chunked)\n    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/lib/python3.13/http/client.py\", line 1093, in _send_output\n    self.send(msg)\n    ~~~~~~~~~^^^^^\n  File \"/usr/lib/python3.13/http/client.py\", line 1037, in send\n    self.connect()\n    ~~~~~~~~~~~~^^\n  File \"/usr/lib/python3.13/http/client.py\", line 1479, in connect\n    self.sock = self._context.wrap_socket(self.sock,\n                ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^\n                                          server_hostname=server_hostname)\n                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/lib/python3.13/ssl.py\", line 455, in wrap_socket\n    return self.sslsocket_class._create(\n           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^\n        sock=sock,\n        ^^^^^^^^^^\n    ...<5 lines>...\n        session=session\n        ^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"/usr/lib/python3.13/ssl.py\", line 1076, in _create\n    self.do_handshake()\n    ~~~~~~~~~~~~~~~~~^^\n  File \"/usr/lib/python3.13/ssl.py\", line 1372, in do_handshake\n    self._sslobj.do_handshake()\n    ~~~~~~~~~~~~~~~~~~~~~~~~~^^\nKeyboardInterrupt",
+    "logs": [],
+    "total": 694,
+    "attempted": 0,
+    "downloaded": 0,
+    "errors": 0,
+    "remaining_missing": 694,
+    "failed_ids": [],
+    "failed_messages": [],
+    "queued": 0
+  },
+  "last_run": "2025-11-19T05:36:20.302043Z",
+  "primary_csv": "reports/webui/primary_input.csv",
+  "primary_uploaded": "2025-11-19T06:09:09.422868Z",
+  "primary_ptm_name": "Glutathionylation",
+  "primary_mapping": {
+    "uniprot_column": "UniProt_ID",
+    "site_column": "Glutathione_Site",
+    "target_residues": [
+      "C"
+    ]
+  },
+  "row_count": 1905,
+  "filtered_by_residue": 0,
+  "structure_fetch": {
+    "status": "queued",
+    "attempted": 0,
+    "downloaded": 0,
+    "errors": 0,
+    "remaining_missing": 30,
+    "failed_ids": [],
+    "failed_messages": [],
+    "logs": [],
+    "queued": 694,
+    "total_missing": 0,
+    "total": 30
+  }
+}
