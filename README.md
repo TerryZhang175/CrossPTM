@@ -49,9 +49,15 @@ The web UI is the easiest way to run the pipeline.
 
 1.  **Start the server**:
     ```bash
+    # Local access only (default)
     uvicorn app.main:app --reload
+
+    # Allow LAN access (accessible by others on your network)
+    uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     ```
-2.  **Open your browser**: Navigate to [http://127.0.0.1:8000](http://127.0.0.1:8000).
+2.  **Open your browser**:
+    *   **Local**: [http://127.0.0.1:8000](http://127.0.0.1:8000)
+    *   **LAN**: `http://<YOUR_IP_ADDRESS>:8000` (e.g., `http://192.168.1.5:8000`)
 
 3.  **Follow the steps**:
     *   **Step 1**: Upload your Primary PTM file (CSV). Specify columns for UniProt ID and Site position.
